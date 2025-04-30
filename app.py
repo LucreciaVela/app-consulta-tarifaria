@@ -5,7 +5,7 @@ import streamlit as st
 # Cargar los datos desde un archivo CSV (ejemplo de prueba)
 @st.cache_data
 def cargar_datos():
-    return pd.read_csv("tarifas_demo.csv")
+    return pd.read_csv("tarifas_real.csv")
 
 df = cargar_datos()
 
