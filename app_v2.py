@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 from rapidfuzz import process, fuzz
 
-@st.cache_data
+# @st.cache_data
 def cargar_datos():
     return pd.read_csv("tarifas_real.csv")
 
