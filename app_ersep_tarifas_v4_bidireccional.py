@@ -1,83 +1,163 @@
-
 import streamlit as st
 import pandas as pd
-import difflib
-from urllib.parse import quote
+from pathlib import Path
 
-# Configurar página
-st.set_page_config(page_title="Tarifas Interurbanas ERSeP", layout="centered")
+# -------------------------------------------------------------------
+# CONFIGURACIÓN BÁSICA
+# -------------------------------------------------------------------
+st.set_page_config(
+    page_title="Consulta Tarifaria ERSeP",
+    page_icon="🚌",
+    layout="centered"
+)
 
-# Cargar datos
-df_tarifas = pd.read_pickle("tarifario.pkl")
-df_localidades = pd.read_pickle("localidades.pkl")
+st.title("🚌 Consulta Tarifaria – RG ERSeP N° 60")
+st.markdown(
+    "Aplicación de consulta de tarifas del **transporte interurbano de pasajeros** "
+    "según el **Cuadro Tarifario RG N° 60**."
+)
 
-# Encabezado con logo
-st.image("logo ersep.jpg", width=180)
-st.markdown("<h2 style='text-align: center;'>Consulta de Tarifas - Transporte Interurbano Córdoba (ERSeP)</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Ingrese el origen y destino del viaje para obtener la tarifa vigente.</p>", unsafe_allow_html=True)
+# -------------------------------------------------------------------
+# CARGA DE DATOS
+# -------------------------------------------------------------------
 
-# Función para normalizar texto
-def normalizar(texto):
-    return str(texto).strip().lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+@st.cache_data
+def cargar_tarifas(path_excel: str) -> pd.DataFrame:
+    """
+    Lee el cuadro tarifario desde el Excel oficial y devuelve
+    un DataFrame limpio.
+    """
+    xls_path = Path(path_excel)
 
-# Diccionario de localidades normalizadas
-localidades_unicas = df_localidades['Nombre'].dropna().unique().tolist()
-localidades_normalizadas = {normalizar(loc): loc for loc in localidades_unicas}
+    if not xls_path.exists():
+        st.error(
+            f"No se encuentra el archivo `{path_excel}` en el repositorio.\n\n"
+            "Subí el Excel al mismo nivel que este archivo `.py` y volvé a ejecutar la app."
+        )
+        return pd.DataFrame()
 
-# Formulario de búsqueda
-with st.form("busqueda_tarifa"):
-    col1, col2 = st.columns(2)
-    with col1:
-        origen_input = st.text_input("Origen")
-    with col2:
-        destino_input = st.text_input("Destino")
-    submitted = st.form_submit_button("Consultar Tarifa")
+    df = pd.read_excel(xls_path, sheet_name="CUADRO TARIFARIO RG 60")
 
-# Función para buscar localidad por coincidencia flexible
-def buscar_localidad(cadena):
-    normal = normalizar(cadena)
-    coincidencias = difflib.get_close_matches(normal, localidades_normalizadas.keys(), n=1, cutoff=0.6)
-    if coincidencias:
-        return localidades_normalizadas[coincidencias[0]]
-    return None
+    # Normalización de columnas esperadas
+    columnas_esperadas = [
+        "CUIT", "EMPRESA", "MODALIDAD", "ORIGEN", "DESTINO", "TARIFA RG 60"
+    ]
+    faltantes = [c for c in columnas_esperadas if c not in df.columns]
+    if faltantes:
+        st.error(
+            "El Excel no tiene las columnas esperadas. Faltan: "
+            + ", ".join(faltantes)
+        )
+        return pd.DataFrame()
 
-# Procesar búsqueda
-if submitted:
-    origen_valido = buscar_localidad(origen_input)
-    destino_valido = buscar_localidad(destino_input)
+    # Limpieza básica de textos
+    for col in ["CUIT", "EMPRESA", "MODALIDAD", "ORIGEN", "DESTINO"]:
+        df[col] = df[col].astype(str).str.strip()
 
-    if origen_valido and destino_valido:
-        resultados = df_tarifas[
-            ((df_tarifas['Origen'] == origen_valido) & (df_tarifas['Destino'] == destino_valido)) |
-            ((df_tarifas['Origen'] == destino_valido) & (df_tarifas['Destino'] == origen_valido))
-        ].copy()
+    # Nos aseguramos que tarifa sea numérica
+    df["TARIFA RG 60"] = pd.to_numeric(df["TARIFA RG 60"], errors="coerce")
 
-        if not resultados.empty:
-            resultados['Tarifa'] = resultados['Tarifa'].map(lambda x: f"$ {x:,.2f}")
-            resultados = resultados[['Empresa', 'Modalidad', 'Tarifa']].drop_duplicates().reset_index(drop=True)
+    return df
 
-            st.success("Resultado encontrado:")
-            st.dataframe(resultados.style.hide(axis='index'), use_container_width=True)
 
-            # Crear mensaje múltiple para compartir
-            mensaje = f"🚌 ERSeP – Tarifa Interurbano Córdoba\n"
-            mensaje += f"📍 Origen: {origen_valido.upper()}\n📍 Destino: {destino_valido.upper()}\n"
-            for _, row in resultados.iterrows():
-                mensaje += f"🏢 {row['Empresa']} – {row['Modalidad']}: {row['Tarifa']}\n"
+df = cargar_tarifas("CUADRO TARIFARIO RG N° 60.xlsx")
 
-            st.markdown("### Texto para compartir")
-            st.text_area(" ", mensaje, height=150, label_visibility="collapsed")
+if df.empty:
+    st.stop()
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"<a href='https://wa.me/?text={quote(mensaje)}' target='_blank'><button style='background-color:#25D366;color:white;padding:10px 15px;font-size:16px;border:none;border-radius:5px;'>📲 Compartir por WhatsApp</button></a>", unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"<a href='mailto:?subject=Tarifa Interurbano ERSeP&body={quote(mensaje)}'><button style='background-color:#0072C6;color:white;padding:10px 15px;font-size:16px;border:none;border-radius:5px;'>✉️ Compartir por Email</button></a>", unsafe_allow_html=True)
+# -------------------------------------------------------------------
+# PANEL DE FILTROS
+# -------------------------------------------------------------------
 
-            st.markdown("---")
-            if st.button("🔄 Nueva búsqueda"):
-                st.experimental_rerun()
-        else:
-            st.warning("No se encontró un recorrido con ese origen y destino.")
+st.subheader("🔍 Parámetros de búsqueda")
+
+# Lista de localidades a partir de ORIGEN y DESTINO (bidireccional)
+localidades = pd.unique(
+    pd.concat([df["ORIGEN"], df["DESTINO"]], ignore_index=True)
+).tolist()
+localidades = sorted(localidades)
+
+col1, col2 = st.columns(2)
+with col1:
+    origen = st.selectbox("Origen", localidades, index=0)
+with col2:
+    destino = st.selectbox("Destino", localidades, index=0)
+
+col3, col4 = st.columns(2)
+with col3:
+    empresas = ["TODAS"] + sorted(df["EMPRESA"].unique().tolist())
+    empresa_sel = st.selectbox("Empresa", empresas, index=0)
+
+with col4:
+    modalidades = ["TODAS"] + sorted(df["MODALIDAD"].unique().tolist())
+    modalidad_sel = st.selectbox("Modalidad", modalidades, index=0)
+
+st.caption("La búsqueda es **bidireccional**: se consideran tanto ORIGEN→DESTINO como DESTINO→ORIGEN.")
+
+# -------------------------------------------------------------------
+# BÚSQUEDA DE TARIFA
+# -------------------------------------------------------------------
+
+if st.button("Consultar tarifa"):
+    if origen == destino:
+        st.warning("El origen y el destino no pueden ser iguales.")
     else:
-        st.error("No se reconocieron las localidades ingresadas. Verifique los nombres.")
+        # Filtro bidireccional
+        mask_od = (
+            ((df["ORIGEN"] == origen) & (df["DESTINO"] == destino)) |
+            ((df["ORIGEN"] == destino) & (df["DESTINO"] == origen))
+        )
+
+        df_filtrado = df[mask_od].copy()
+
+        if empresa_sel != "TODAS":
+            df_filtrado = df_filtrado[df_filtrado["EMPRESA"] == empresa_sel]
+
+        if modalidad_sel != "TODAS":
+            df_filtrado = df_filtrado[df_filtrado["MODALIDAD"] == modalidad_sel]
+
+        if df_filtrado.empty:
+            st.error("No se encontraron tarifas para la combinación seleccionada.")
+        else:
+            st.subheader("📋 Resultado de la consulta")
+
+            # Ordenar por empresa/modalidad para que quede prolijo
+            df_filtrado = df_filtrado.sort_values(
+                by=["EMPRESA", "MODALIDAD", "ORIGEN", "DESTINO"]
+            )
+
+            # Mostrar tabla amigable
+            df_mostrar = df_filtrado[
+                ["EMPRESA", "MODALIDAD", "ORIGEN", "DESTINO", "TARIFA RG 60"]
+            ].rename(columns={"TARIFA RG 60": "Tarifa RG 60 ($)"})
+
+            st.dataframe(
+                df_mostrar.style.format({"Tarifa RG 60 ($)": "{:,.2f}"}),
+                use_container_width=True
+            )
+
+            # Si hay más de un registro, mostrar rangos
+            tarifa_min = df_filtrado["TARIFA RG 60"].min()
+            tarifa_max = df_filtrado["TARIFA RG 60"].max()
+
+            if tarifa_min == tarifa_max:
+                st.success(
+                    f"Tarifa RG 60 vigente para el tramo **{origen} – {destino}**: "
+                    f"**${tarifa_min:,.2f}**"
+                )
+            else:
+                st.info(
+                    f"Rango de tarifas RG 60 para el tramo **{origen} – {destino}**: "
+                    f"entre **${tarifa_min:,.2f}** y **${tarifa_max:,.2f}**, "
+                    f"según empresa/modalidad."
+                )
+
+# -------------------------------------------------------------------
+# INFORMACIÓN ADICIONAL
+# -------------------------------------------------------------------
+
+st.markdown("---")
+st.caption(
+    "Fuente: Cuadro Tarifario **RG ERSeP N° 60**. "
+    "Aplicación de consulta para uso interno del Área Tarifas – ERSeP."
+)
