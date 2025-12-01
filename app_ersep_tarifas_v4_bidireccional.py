@@ -12,6 +12,7 @@ st.set_page_config(page_title="Tarifas Interurbanas ERSeP", layout="centered")
 # Cargar datos
 # --------------------------------------------------
 df_tarifas = pd.read_pickle("tarifario.pkl")
+df_tarifas = df_tarifas[df_tarifas["Empresa"].str.upper() != "ERSA"]
 # Se mantiene por compatibilidad, aunque ya no lo usamos:
 try:
     df_localidades = pd.read_pickle("localidades.pkl")
