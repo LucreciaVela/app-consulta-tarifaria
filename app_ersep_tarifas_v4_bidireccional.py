@@ -36,7 +36,7 @@ def cargar_tarifas(path_excel: str) -> pd.DataFrame:
         )
         return pd.DataFrame()
 
-    df = pd.read_excel(xls_path, sheet_name="CUADRO TARIFARIO RG 60")
+    df = pd.read_excel(xls_path, sheet_name="CUADRO TARIFARIO RG 60", engine="openpyxl")
 
     # Normalización de columnas esperadas
     columnas_esperadas = [
