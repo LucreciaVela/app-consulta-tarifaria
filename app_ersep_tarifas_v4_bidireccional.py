@@ -1,4 +1,12 @@
 import streamlit as st
+
+st.markdown("""
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+""", unsafe_allow_html=True)
+import streamlit as st
 import pandas as pd
 import difflib
 from urllib.parse import quote
